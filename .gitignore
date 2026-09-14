@@ -1,0 +1,57 @@
+# ---------------------------------------------------------------------------
+# Secrets — never commit these
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# Streamlit's native secrets file, if you ever switch to st.secrets
+.streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# Source documents and the index built from them
+# ---------------------------------------------------------------------------
+# PDFs are usually large and often copyrighted — keep them local.
+data/*
+!data/.gitkeep
+
+# Regenerable from ./data via the sidebar "Build index" button.
+chroma_db/
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ---------------------------------------------------------------------------
+# Agent tooling
+# ---------------------------------------------------------------------------
+# Streamlit auto-creates these as symlinks into .venv/. They are machine-local
+# and would be dangling links in a fresh clone. Scoped to skills/ so a real
+# .claude/settings.json can still be committed deliberately.
+.agents/skills/
+.claude/skills/
+.claude/settings.local.json
+
+# ---------------------------------------------------------------------------
+# OS and editor cruft
+# ---------------------------------------------------------------------------
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+.idea/
+*.swp

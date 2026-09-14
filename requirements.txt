@@ -1,0 +1,19 @@
+# Verified together on Python 3.11+ / macOS, 2026-09-14.
+# Pinned exactly for reproducible builds; transitive deps resolve on their own.
+
+streamlit==1.63.0
+
+# LangChain. Note: the top-level `langchain` package is deliberately NOT
+# required — in LangChain 1.x it is an agent framework, and this app builds its
+# retrieval chain from langchain-core primitives (LCEL) instead.
+langchain-core==1.6.3
+langchain-text-splitters==1.1.2
+langchain-openai==1.6.2
+langchain-chroma==1.1.0
+langchain-community==0.4.2   # provides PyPDFLoader; see README "Dependency notes"
+
+# Vector store + PDF parsing
+chromadb==1.5.9
+pypdf==6.18.1
+
+python-dotenv==1.2.3
