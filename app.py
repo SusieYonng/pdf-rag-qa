@@ -30,6 +30,7 @@ from typing import Iterable, Iterator
 
 import streamlit as st
 from dotenv import load_dotenv
+from chromadb.api.shared_system_client import SharedSystemClient
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
@@ -206,33 +207,66 @@ def open_vector_store() -> Chroma:
     )
 
 
+def release_chroma_clients() -> None:
+    """Drop every cached handle on the persist directory.
+
+    Two independent caches keep Chroma clients alive, and both must go before
+    the directory can be swapped or deleted:
+
+    * Streamlit's `@st.cache_resource` on `open_vector_store`.
+    * chromadb's own `SharedSystemClient._identifier_to_system`, a
+      process-global dict keyed by persist path. Constructing `Chroma()` for a
+      path already in that dict reuses the existing client — including its open
+      SQLite connection. If the files were replaced underneath it, queries fail
+      with "no such table: tenants".
+    """
+    open_vector_store.clear()
+    SharedSystemClient.clear_system_cache()
+
+
 def build_index(paths: list[Path]) -> IngestReport:
     """Rebuild the vector store from scratch for the given PDFs.
 
     Rebuilding wholesale (rather than appending) keeps the index consistent
     with ./data: deleted and edited files cannot leave orphan chunks behind.
+
+    The new index is built in a staging directory and only swapped in once it
+    is complete, so a failure partway through (an API error, an interrupted
+    run) leaves the previous index intact rather than destroying it.
     """
     chunks, report = load_and_split(paths)
     if not chunks:
         return report
 
-    # Drop cached handles before deleting the directory underneath them.
-    open_vector_store.clear()
+    staging = PERSIST_DIR.with_name(PERSIST_DIR.name + ".building")
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+
+    try:
+        store = Chroma(
+            collection_name=COLLECTION_NAME,
+            embedding_function=get_embeddings(),
+            persist_directory=str(staging),
+        )
+        # Batch the embedding calls to stay well inside OpenAI's request limits.
+        for start in range(0, len(chunks), 128):
+            store.add_documents(chunks[start : start + 128])
+    except BaseException:
+        # Leave the previous index untouched and clean up the partial build.
+        release_chroma_clients()
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+    # Swap the finished index in. Release handles first: the staging client
+    # holds the files we are about to rename, and a stale client may still
+    # hold the directory we are about to delete.
+    release_chroma_clients()
     if PERSIST_DIR.exists():
         shutil.rmtree(PERSIST_DIR)
-    PERSIST_DIR.mkdir(parents=True, exist_ok=True)
-
-    store = Chroma(
-        collection_name=COLLECTION_NAME,
-        embedding_function=get_embeddings(),
-        persist_directory=str(PERSIST_DIR),
-    )
-    # Batch the embedding calls to stay well inside OpenAI's request limits.
-    for start in range(0, len(chunks), 128):
-        store.add_documents(chunks[start : start + 128])
+    staging.rename(PERSIST_DIR)
 
     write_manifest(corpus_fingerprint(paths), report)
-    open_vector_store.clear()
     return report
 
 
@@ -355,16 +389,23 @@ def render_sidebar() -> tuple[int, str, float]:
             disabled=not pdfs,
             use_container_width=True,
         ):
-            with st.spinner("Loading, splitting and embedding PDFs…"):
-                report = build_index(pdfs)
-            for name, err in report.failures:
-                st.error(f"{name}: {err}")
-            if report.chunks:
-                st.success(f"Indexed {report.chunks} chunks.")
-                st.session_state.messages = []
-                st.rerun()
-            elif not report.failures:
-                st.error("Nothing to index — no extractable text found.")
+            report = None
+            try:
+                with st.spinner("Loading, splitting and embedding PDFs…"):
+                    report = build_index(pdfs)
+            except Exception as exc:  # noqa: BLE001 - shown to the user
+                st.error(f"Build failed: {exc}")
+                st.caption("The previous index was left untouched.")
+
+            if report is not None:
+                for name, err in report.failures:
+                    st.error(f"{name}: {err}")
+                if report.chunks:
+                    st.success(f"Indexed {report.chunks} chunks.")
+                    st.session_state.messages = []
+                    st.rerun()
+                elif not report.failures:
+                    st.error("Nothing to index — no extractable text found.")
 
         st.header("Retrieval")
         k = st.slider("Passages retrieved (k)", 1, 12, 4)

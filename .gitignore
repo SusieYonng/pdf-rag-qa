@@ -16,7 +16,8 @@ data/*
 !data/.gitkeep
 
 # Regenerable from ./data via the sidebar "Build index" button.
-chroma_db/
+# The glob also covers the chroma_db.building/ staging directory.
+chroma_db*/
 
 # ---------------------------------------------------------------------------
 # Python
