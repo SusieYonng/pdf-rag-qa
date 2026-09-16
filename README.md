@@ -166,3 +166,12 @@ Two things worth knowing, both verified against the pinned versions:
    works correctly; the warning is cosmetic. If you'd rather drop the dependency
    entirely, `load_and_split()` in `app.py` is the only place it's used and can
    be rewritten against `pypdf` directly in about ten lines.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+Note that this covers the code only. PDFs you place in `./data/` keep whatever
+license they came with, which is why that folder is gitignored.
